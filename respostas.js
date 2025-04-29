@@ -1,16 +1,16 @@
 const puppeteer = require('puppeteer');
+const fs = require('fs');
 
 (async () => {
-  // Configuração do navegador
   const browser = await puppeteer.launch({
-    headless: false, // Altere para true depois de testar
+    headless: false,
     defaultViewport: null,
     args: ['--start-maximized'],
     timeout: 60000
   });
-  
+
   const page = await browser.newPage();
-  
+
   try {
     console.log('Acessando página de login...');
     await page.goto('http://192.168.0.125/index.php?pag=login', {
@@ -22,11 +22,21 @@ const puppeteer = require('puppeteer');
     console.log('Preenchendo credenciais...');
     await page.type('input[name="aluno"]', 'tiago');
     await page.type('input[name="senha"]', '198569879');
-    
-    // Submissão do formulário
+
+    // Espera o botão de login aparecer e estar visível
+    await page.waitForSelector('button[type="submit"]', { visible: true });
+
+    // Garante que o botão está na tela
+    await page.evaluate(() => {
+      document.querySelector('button[type="submit"]').scrollIntoView();
+    });
+
+    // Clica no botão e espera o redirecionamento
     console.log('Enviando formulário...');
     await Promise.all([
-      page.click('button[type="submit"]'),
+      page.evaluate(() => {
+        document.querySelector('button[type="submit"]').click();
+      }),
       page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 })
     ]);
 
@@ -37,14 +47,13 @@ const puppeteer = require('puppeteer');
       throw new Error('Falha no login - URL não redirecionou como esperado');
     }
 
-    // Navegação direta para os gabaritos do curso 441, aula 1
+    // Navegação direta para os gabaritos
     console.log('Acessando gabaritos...');
     await page.goto('http://192.168.0.125/index.php?pag=professor&secao=gabaritos&curso=441&aula=1', {
       waitUntil: 'networkidle2',
       timeout: 60000
     });
 
-    // Espera pela tabela de resultados
     console.log('Aguardando carregamento da tabela...');
     await page.waitForSelector('#teste .table', { timeout: 60000 });
 
@@ -63,12 +72,9 @@ const puppeteer = require('puppeteer');
       });
     });
 
-    // Exibição dos resultados
     console.log('\nRESULTADOS OBTIDOS:');
     console.table(dados);
 
-    // Geração de relatório em arquivo (opcional)
-    const fs = require('fs');
     fs.writeFileSync('gabaritos.json', JSON.stringify(dados, null, 2));
     console.log('Dados salvos em gabaritos.json');
 
@@ -77,7 +83,6 @@ const puppeteer = require('puppeteer');
     await page.screenshot({ path: 'erro.png' });
     console.log('Captura de tela salva como erro.png');
   } finally {
-    // Fechamento do navegador após 10 segundos
     await new Promise(resolve => setTimeout(resolve, 10000));
     await browser.close();
   }
