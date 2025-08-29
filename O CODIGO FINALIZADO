@@ -1,1 +1,190 @@
+const axios = require('axios');
+const { wrapper } = require('axios-cookiejar-support');
+const tough = require('tough-cookie');
+const prompt = require('prompt-sync')();
+
+const alunoJar = new tough.CookieJar();
+const alunoClient = wrapper(axios.create({ jar: alunoJar, withCredentials: true }));
+
+async function concluiVideoaula(curso, aula) {
+  try {
+    await alunoClient.get(`http://192.168.0.125/index.php?pag=aluno&secao=aula&curso=${curso}&aula=${aula}`);
+
+    const resp = await alunoClient.post(
+      `http://192.168.0.125/index.php?pag=aluno&secao=aula&curso=${curso}&aula=${aula}`,
+      {
+        usuario: 'tiago',
+        senha: '198569879'
+      },
+      {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        transformRequest: [(data) =>
+          Object.entries(data).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&')
+        ]
+      }
+    );
+
+    const tokenMatch = resp.data.match(/token=([A-Za-z0-9|=]+)/);
+    const token = tokenMatch ? tokenMatch[1] : '';
+    console.log('Token extraído:', token);
+
+    await alunoClient.post(
+      `http://192.168.0.125/index.php?pag=aluno&secao=aula&curso=${curso}&aula=${aula}&concluida=sim&liberado=sim&token=${token}`,
+      {},
+      {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      }
+    );
+
+    if (token) {
+      const finalUrl = `http://192.168.0.125/index.php?pag=aluno&token=${token}`;
+      await alunoClient.get(finalUrl);
+      console.log('🔁 Redirecionamento final acessado.');
+      console.log('✅ Aula realmente concluída no sistema!');
+    } else {
+      console.log('❌ Token não encontrado. A aula pode não ter sido concluída.');
+    }
+  } catch (error) {
+    console.error('Erro ao concluir a videoaula:', error.message);
+  }
+}
+
+async function concluiApostila(curso, aula) {
+  const resp = await alunoClient.get(
+    `http://192.168.0.125/index.php?pag=aluno&secao=apostila&curso=${curso}&aula=${aula}&concluida=sim`
+  );
+  console.log('✅ Apostila concluída!');
+}
+
+async function concluiExercicios(curso, aula) {
+  await alunoClient.get(`http://192.168.0.125/index.php?pag=aluno&secao=exercicios&curso=${curso}&aula=${aula}`);
+  const resp = await alunoClient.get(
+    `http://192.168.0.125/index.php?pag=aluno&secao=curso&secao=exercicios&curso=${curso}&aula=${aula}&tipo=1&concluida=sim`
+  );
+  console.log('✅ Exercícios finalizados!');
+}
+
+async function concluiFixacao(curso, aula) {
+  await alunoClient.get(`http://192.168.0.125/index.php?pag=aluno&secao=fixacao&curso=${curso}&aula=${aula}`);
+  const resp = await alunoClient.get(
+    `http://192.168.0.125/index.php?pag=aluno&secao=fixacao&curso=${curso}&aula=${aula}&concluida=sim`
+  );
+  console.log('✅ Fixação concluída!');
+}
+
+async function liberaProvaCompleta(curso, aula) {
+  await alunoClient.post(
+    'http://192.168.0.125/_pags/aluno/ajax_verifica_teste_liberado.php',
+    { curso, aula },
+    {
+      headers: {
+        'Content-Type': 'application/json',
+        'Referer': `http://192.168.0.125/index.php?pag=aluno&secao=liberaaula&curso=${curso}&aula=${aula}`
+      }
+    }
+  );
+
+  await alunoClient.post(
+    `http://192.168.0.125/index.php?pag=aluno&secao=liberaaula&curso=${curso}&aula=${aula}`,
+    {
+      liberaaula_login: 'tiago',
+      liberaaula_senha: '198569879'
+    },
+    {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Referer': `http://192.168.0.125/index.php?pag=aluno&secao=liberaaula&curso=${curso}&aula=${aula}`
+      },
+      transformRequest: [(data) =>
+        Object.entries(data).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&')
+      ]
+    }
+  );
+
+  await alunoClient.post(
+    `http://192.168.0.125/index.php?pag=aluno&secao=liberaaula&curso=${curso}&aula=${aula}&acao=salvar`,
+    {
+      observacao: '',
+      apostila: 's',
+      fixacao: 's'
+    },
+    {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Referer': `http://192.168.0.125/index.php?pag=aluno&secao=liberaaula&curso=${curso}&aula=${aula}`
+      },
+      transformRequest: [(data) =>
+        Object.entries(data).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&')
+      ]
+    }
+  );
+
+  await alunoClient.post(
+    'http://192.168.0.125/_pags/aluno/ajax_verifica_teste_liberado.php',
+    { curso, aula },
+    {
+      headers: {
+        'Content-Type': 'application/json',
+        'Referer': `http://192.168.0.125/index.php?pag=aluno&secao=liberaaula&curso=${curso}&aula=${aula}`
+      }
+    }
+  );
+}
+
+async function enviaRespostas() {
+  const curso = prompt('Digite o código do curso: ');
+  const aula = prompt('Digite o número da aula: ');
+
+  await alunoClient.get('http://192.168.0.125/index.php?pag=login');
+  await alunoClient.post(
+    'http://192.168.0.125/logar.php?acao=logar',
+    { aluno: '0056290', senha: '2008' },
+    {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      transformRequest: [(data) =>
+        Object.entries(data).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&')
+      ]
+    }
+  );
+
+  await concluiVideoaula(curso, aula);
+  if (prompt('Videoaula concluída! Ir para apostila? (s/n): ').toLowerCase() !== 's') return;
+
+  await concluiApostila(curso, aula);
+  if (prompt('Apostila concluída! Ir para exercícios? (s/n): ').toLowerCase() !== 's') return;
+
+  await concluiExercicios(curso, aula);
+  if (prompt('Exercícios concluídos! Ir para fixação? (s/n): ').toLowerCase() !== 's') return;
+
+  await concluiFixacao(curso, aula);
+  if (prompt('Fixação concluída! Ir para prova? (s/n): ').toLowerCase() !== 's') return;
+
+  await liberaProvaCompleta(curso, aula);
+
+  const respostas = {
+    'id[0]': '50634', 'p[0]': '1',
+    'id[1]': '50636', 'p[1]': '1',
+    'id[2]': '50635', 'p[2]': '1',
+    'id[3]': '50633', 'p[3]': '1',
+    'id[4]': '50637', 'p[4]': '1',
+    'perguntas': '5',
+    'enviado': 'sim'
+  };
+
+  const resp = await alunoClient.post(
+    `http://192.168.0.125/index.php?pag=aluno&secao=teste&curso=${curso}&aula=${aula}&acao=avalia`,
+    respostas,
+    {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      transformRequest: [(data) =>
+        Object.entries(data).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&')
+      ]
+    }
+  );
+
+  console.log('✅ Respostas enviadas com sucesso!');
+  console.log(resp.data);
+}
+
+enviaRespostas();
 
